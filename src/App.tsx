@@ -1,7 +1,7 @@
 import "./App.css";
 import React, { useState } from "react";
 
-type EmployeeProject = {
+type EmployeeRecord = {
   EmpID: number;
   ProjectID: number;
   DateFrom: Date;
@@ -12,6 +12,12 @@ type PairProjectDays = {
   emp1: number;
   emp2: number;
   projectId: number;
+  totalDaysWorked: number;
+};
+
+type PairTotalDays = {
+  emp1: number;
+  emp2: number;
   totalDaysWorked: number;
 };
 
@@ -48,7 +54,6 @@ const datePatterns: {
       return new Date(Number(parts[2]), Number(parts[1]) - 1, Number(parts[0]));
     },
   },
-  // Add more patterns if needed
 ];
 
 function parseDate(dateStr: string): Date | null {
@@ -93,7 +98,7 @@ function App() {
 
   const processData = (data: string[][]) => {
     setError(null);
-    const projects: EmployeeProject[] = [];
+    const records: EmployeeRecord[] = [];
     for (const row of data) {
       if (row.length < 4) continue;
       const EmpID = Number(row[0]);
@@ -105,23 +110,28 @@ function App() {
         setFileUploaded(false);
         return;
       }
-      projects.push({ EmpID, ProjectID, DateFrom, DateTo });
+      records.push({ EmpID, ProjectID, DateFrom, DateTo });
     }
 
     const pairMap = new Map<string, PairProjectDays>();
+    const pairMapTotal = new Map<string, PairTotalDays>();
 
-    for (let i = 0; i < projects.length; i++) {
-      for (let j = i + 1; j < projects.length; j++) {
-        const p1 = projects[i];
-        const p2 = projects[j];
+    for (let i = 0; i < records.length; i++) {
+      for (let j = i + 1; j < records.length; j++) {
+        const p1 = records[i];
+        const p2 = records[j];
         if (p1.ProjectID === p2.ProjectID && p1.EmpID !== p2.EmpID) {
           const start = p1.DateFrom > p2.DateFrom ? p1.DateFrom : p2.DateFrom;
           const end = p1.DateTo < p2.DateTo ? p1.DateTo : p2.DateTo;
           if (end >= start) {
             const days = differenceInDays(end, start) + 1;
+
             const emp1 = Math.min(p1.EmpID, p2.EmpID);
             const emp2 = Math.max(p1.EmpID, p2.EmpID);
+
             const projectId = p1.ProjectID;
+
+            // all the pairs per project (with all the matched days handling diff periods)
             const key = `${emp1}-${emp2}-${projectId}`;
             if (pairMap.has(key)) {
               const existing = pairMap.get(key)!;
@@ -134,14 +144,53 @@ function App() {
                 totalDaysWorked: days,
               });
             }
+
+            // all the pairs (with SUM of the days per Pair)
+            const keyTotal = `${emp1}-${emp2}`;
+            if (pairMapTotal.has(keyTotal)) {
+              const existing = pairMapTotal.get(keyTotal)!;
+              existing.totalDaysWorked += days;
+            } else {
+              pairMapTotal.set(keyTotal, {
+                emp1,
+                emp2,
+                totalDaysWorked: days,
+              });
+            }
           }
         }
       }
     }
 
-    console.log("Pairs:", Array.from(pairMap.values())); // Debug log
+    console.log("pairMap:", Array.from(pairMap.values()));
+    console.log("pairMapTotal:", Array.from(pairMapTotal.values()));
 
-    setPairs(Array.from(pairMap.values()));
+    const highestMaxScore = Math.max(
+      ...Array.from(pairMapTotal.values()).map(
+        (member) => member.totalDaysWorked
+      )
+    );
+    const pairMapTotalResult = Array.from(pairMapTotal.values()).filter(
+      (member) => member.totalDaysWorked === highestMaxScore
+    );
+
+    // ALL PAIRS PER PROJECT
+    // setPairs(Array.from(pairMap.values()));
+
+    console.log("pairMapTotalResult:");
+    console.log(pairMapTotalResult);
+
+    const filtered = Array.from(pairMap.values()).filter((ppd) =>
+      pairMapTotalResult.some(
+        (ptd) => ptd.emp1 === ppd.emp1 && ptd.emp2 === ppd.emp2
+      )
+    );
+
+    console.log("filtered:");
+    console.log(filtered);
+
+    // PAIR PER PROJECT - SELECTED
+    setPairs(filtered);
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
